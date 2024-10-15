@@ -1,0 +1,154 @@
+<!-- templates/index.html -->
+
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Attendance Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/daisyui@3.1.0/dist/full.css"
+      rel="stylesheet"
+      type="text/css"
+    />
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Inter", "sans-serif"],
+            },
+          },
+        },
+        daisyui: {
+          themes: ["light", "dark"],
+        },
+      };
+    </script>
+  </head>
+  <body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+      <h1 class="text-4xl font-bold text-center mb-8">Preparation</h1>
+
+      <div class="card bg-base-100 shadow-xl max-w-md mx-auto">
+        <div class="card-body">
+          <div class="form-control w-full mb-4">
+            <label for="category" class="label">
+              <span class="label-text">Select Category</span>
+            </label>
+            <select id="category" class="select select-bordered w-full">
+              <option value="Automata">Automata</option>
+              <option value="Cloud Computing">Cloud Computing</option>
+              <option value="AI">AI</option>
+              <option value="Blockchain">Blockchain</option>
+              <option value="Cyber Sec">Cyber Sec</option>
+              <option value="DataScience">DataScience</option>
+            </select>
+          </div>
+
+          <div id="reader" class="overflow-hidden rounded-lg"></div>
+
+          <button id="startButton" class="btn btn-primary mt-4">
+            Start Scanning
+          </button>
+          <button
+            id="stopButton"
+            class="btn btn-error mt-2"
+            style="display: none"
+          >
+            Stop Scanning
+          </button>
+        </div>
+      </div>
+
+      <div
+        id="result"
+        class="mt-8 bg-white rounded-lg shadow-md p-4 max-w-md mx-auto overflow-auto max-h-64"
+      ></div>
+    </div>
+
+    <script>
+      let html5QrCode;
+      const startButton = document.getElementById("startButton");
+      const stopButton = document.getElementById("stopButton");
+      const resultDiv = document.getElementById("result");
+
+      startButton.addEventListener("click", () => {
+        html5QrCode = new Html5Qrcode("reader");
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+        html5QrCode
+          .start({ facingMode: "environment" }, config, qrCodeSuccessCallback)
+          .then(() => {
+            startButton.style.display = "none";
+            stopButton.style.display = "block";
+          })
+          .catch((err) => {
+            resultDiv.innerHTML = `Error starting scanner: ${err}`;
+          });
+      });
+
+      stopButton.addEventListener("click", () => {
+        html5QrCode
+          .stop()
+          .then(() => {
+            startButton.style.display = "block";
+            stopButton.style.display = "none";
+          })
+          .catch((err) => {
+            resultDiv.innerHTML = `Error stopping scanner: ${err}`;
+          });
+      });
+
+      const qrCodeSuccessCallback = (decodedText, decodedResult) => {
+        html5QrCode.stop();
+        startButton.style.display = "block";
+        stopButton.style.display = "none";
+        markAttendance(decodedText);
+      };
+
+      async function markAttendance(qrCode) {
+        const category = document.getElementById("category").value;
+        resultDiv.innerHTML = '<p class="text-center">Processing...</p>';
+
+        try {
+          const response = await fetch("/mark_attendance", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ category, qr_code: qrCode }),
+          });
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+
+          resultDiv.innerHTML = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const decodedChunk = decoder.decode(value);
+            const lines = decodedChunk.split("\n");
+            lines.forEach((line) => {
+              if (line.trim()) {
+                const [name, status] = line.split(":");
+                const statusClass = status.includes("SUCCESS")
+                  ? "text-success"
+                  : "text-error";
+                resultDiv.innerHTML += `<p><span class="font-semibold">${name}:</span> <span class="${statusClass}">${status.replace(
+                  "ATTENDANCE",
+                  "Prepration"
+                )}</span></p>`;
+              }
+            });
+          }
+        } catch (error) {
+          resultDiv.innerHTML = `<p class="text-error">Error: ${error.message}</p>`;
+        }
+      }
+    </script>
+  </body>
+</html>
